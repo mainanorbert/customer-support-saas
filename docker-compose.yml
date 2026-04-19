@@ -1,0 +1,27 @@
+services:
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    ports:
+      - "8000:8000"
+    environment:
+      OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:?set OPENROUTER_API_KEY in your shell or a .env file next to docker-compose}
+      CLERK_SECRET_KEY: ${CLERK_SECRET_KEY:?set CLERK_SECRET_KEY for Clerk JWT verification}
+      # Comma-separated browser origins that may send Clerk session JWTs (must match how users open the app)
+      CLERK_AUTHORIZED_PARTIES: ${CLERK_AUTHORIZED_PARTIES:-http://localhost:3000,http://127.0.0.1:3000}
+      # Optional overrides (match names in Settings / env):
+      # OPENROUTER_BASE_URL: https://openrouter.ai/api/v1
+      # OPENROUTER_MODEL: openai/gpt-4.1-mini
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=5).read()",
+        ]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s

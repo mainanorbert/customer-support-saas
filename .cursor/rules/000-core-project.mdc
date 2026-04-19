@@ -1,0 +1,25 @@
+---
+alwaysApply: true
+---
+This project involves building an AI-powered support agent for a multi-tenant SaaS platform. The system will automatically monitor incoming emails and WhatsApp messages and generate personalized responses using tenant-specific embeddings.
+
+Users will be able to sign up, create accounts, and upload documents that will be processed into embeddings. They will also configure the email accounts and communication channels they want the system to monitor. Each tenant’s data and embeddings will remain isolated to ensure accurate and context-specific responses.
+
+When a new message is received—such as a customer inquiry via email or WhatsApp—the system will retrieve the relevant embeddings associated with that tenant. The AI assistant will then use this contextual information to generate and send an appropriate response.
+
+Document modules with full statements that are informative to the user
+
+Functions must be properly documented using docstring
+
+
+
+Guardrails:
+
+Not to expose personal information
+
+
+Rag Pipiline
+
+
+
+upload, save, files, generate markdown, save the markdown files based on 

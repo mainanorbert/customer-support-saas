@@ -1,0 +1,11 @@
+[project]
+name = "backend"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "clerk-backend-api>=5.0.6",
+    "fastapi[standard]>=0.136.0",
+    "openai>=2.32.0",
+]
