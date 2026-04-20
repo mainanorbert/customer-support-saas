@@ -1,5 +1,6 @@
 """Clerk session verification for FastAPI routes."""
 
+from dataclasses import dataclass
 from functools import lru_cache
 from typing import Annotated
 
@@ -9,6 +10,28 @@ from fastapi import Depends, HTTPException, Request
 
 from src.core.config import Settings
 from src.core.dependencies import get_settings
+
+
+@dataclass(frozen=True)
+class UserIdentity:
+    """Extracted identity fields from a verified Clerk session token."""
+
+    user_id: str
+    email: str | None
+
+
+def get_authenticated_user_identity(state: RequestState) -> UserIdentity:
+    """Extract the Clerk user ID and email from a verified session state.
+
+    Raises HTTP 401 if the sub claim is absent, which should not happen for
+    a state that already passed ``require_clerk_session``.
+    """
+    payload: dict = state.payload or {}
+    user_id: str = payload.get("sub", "")
+    if not user_id:
+        raise HTTPException(status_code=401, detail="Could not extract user identity from session token.")
+    email: str | None = payload.get("email")
+    return UserIdentity(user_id=user_id, email=email)
 
 
 def parse_authorized_parties(raw: str) -> list[str]:

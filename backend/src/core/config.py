@@ -1,6 +1,6 @@
 """Application settings loaded from environment variables."""
 
-from pydantic import Field
+from pydantic import AliasChoices, Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -23,3 +23,19 @@ class Settings(BaseSettings):
         default="http://localhost:3000,http://127.0.0.1:3000",
         description="Comma-separated frontend origins allowed in Clerk session tokens (azp)",
     )
+    database_url: str = Field(
+        validation_alias=AliasChoices("EIVEN_SERVICE_URL", "DATABASE_URL"),
+        description="Aiven PostgreSQL Service URI (postgres:// or postgresql+psycopg2://)",
+    )
+    upload_root: str = Field(
+        default="./storage",
+        description="Root directory where uploaded files are stored locally",
+    )
+
+    @field_validator("database_url", mode="before")
+    @classmethod
+    def normalize_database_url(cls, v: str) -> str:
+        """Normalize postgres:// shorthand to the SQLAlchemy psycopg2 dialect prefix."""
+        if isinstance(v, str) and v.startswith("postgres://"):
+            return v.replace("postgres://", "postgresql+psycopg2://", 1)
+        return v
