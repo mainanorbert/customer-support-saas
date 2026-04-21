@@ -18,6 +18,51 @@ class Settings(BaseSettings):
         default="openai/gpt-4.1-mini",
         description="OpenRouter model slug for chat completions",
     )
+    embedding_model: str = Field(
+        default="openai/text-embedding-3-small",
+        description="OpenRouter / OpenAI-compatible embedding model slug",
+    )
+    embedding_dimensions: int = Field(
+        default=1536,
+        ge=32,
+        le=8192,
+        description="Vector size for document_chunks.embedding; must match the embedding model output",
+    )
+    embedding_max_chars_per_chunk: int = Field(
+        default=2000,
+        ge=256,
+        le=32000,
+        description="Maximum characters per text chunk before embedding",
+    )
+    embedding_chunk_overlap_chars: int = Field(
+        default=200,
+        ge=0,
+        le=4096,
+        description="Character overlap between consecutive chunks",
+    )
+    embedding_api_batch_size: int = Field(
+        default=64,
+        ge=1,
+        le=256,
+        description="Maximum number of texts sent per embeddings API request",
+    )
+    rag_top_k: int = Field(
+        default=5,
+        ge=1,
+        le=20,
+        description="Number of nearest chunks to retrieve per query",
+    )
+    rag_similarity_threshold: float = Field(
+        default=0.35,
+        ge=0.0,
+        le=1.0,
+        description=(
+            "Cosine similarity floor (0–1). Queries whose best chunk similarity falls below "
+            "this value are considered out-of-scope and receive a polite refusal. "
+            "For OpenAI text-embedding-3-* models, relevant matches usually score 0.35–0.6; "
+            "tune via RAG_SIMILARITY_THRESHOLD in .env."
+        ),
+    )
     clerk_secret_key: str = Field(..., description="Clerk secret key for verifying session JWTs")
     clerk_authorized_parties: str = Field(
         default="http://localhost:3000,http://127.0.0.1:3000",

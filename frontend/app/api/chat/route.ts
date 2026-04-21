@@ -6,11 +6,13 @@ function get_backend_base_url(): string {
   return raw.replace(/\/$/, "")
 }
 
-function parse_chat_body(body: unknown): { message: string } | null {
+function parse_chat_body(body: unknown): { company_id: string; message: string } | null {
   if (typeof body !== "object" || body === null) return null
+  const company_id = (body as { company_id?: unknown }).company_id
   const message = (body as { message?: unknown }).message
+  if (typeof company_id !== "string" || company_id.trim().length === 0) return null
   if (typeof message !== "string" || message.trim().length === 0) return null
-  return { message: message.trim() }
+  return { company_id: company_id.trim(), message: message.trim() }
 }
 
 /**
@@ -37,7 +39,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   const parsed = parse_chat_body(raw)
   if (!parsed) {
     return NextResponse.json(
-      { error: "message is required and must be a non-empty string" },
+      { error: "company_id and message are required non-empty strings" },
       { status: 400 },
     )
   }
@@ -51,7 +53,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
         "Content-Type": "application/json",
         Authorization: `Bearer ${session_token}`,
       },
-      body: JSON.stringify({ message: parsed.message }),
+      body: JSON.stringify({ company_id: parsed.company_id, message: parsed.message }),
     })
   } catch {
     return NextResponse.json(

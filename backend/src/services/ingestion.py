@@ -9,6 +9,9 @@ from sqlalchemy.orm import Session
 from src.models import Company, Document, User, generate_uuid
 
 DOCUMENT_STATUS_PENDING = "pending"
+DOCUMENT_STATUS_PROCESSING = "processing"
+DOCUMENT_STATUS_COMPLETED = "completed"
+DOCUMENT_STATUS_FAILED = "failed"
 
 
 @dataclass(frozen=True)
@@ -96,6 +99,23 @@ def list_documents(session: Session, *, company_id: str) -> list[Document]:
     )
 
 
+def count_pending_documents(session: Session, *, company_id: str) -> int:
+    """Return the number of documents awaiting embedding for the given company.
+
+    Counts rows where ``is_embedded`` is false and ``status`` is not failed,
+    matching the same predicate used by the embedding pipeline job.
+    """
+    return (
+        session.query(Document)
+        .filter(
+            Document.company_id == company_id,
+            Document.is_embedded.is_(False),
+            Document.status != DOCUMENT_STATUS_FAILED,
+        )
+        .count()
+    )
+
+
 def ensure_document_name_is_available(session: Session, *, company_id: str, file_name: str) -> None:
     """Reject uploads that would violate the per-company file name uniqueness constraint."""
     existing = (
@@ -118,6 +138,23 @@ def sanitize_file_name(file_name: str) -> str:
     if cleaned_name in {".", ".."}:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Uploaded file name is invalid.")
     return cleaned_name
+
+
+def assert_pdf_upload(upload_file: UploadFile) -> None:
+    """Raise HTTP 415 when the uploaded file is not a PDF.
+
+    Checks both the filename extension and the declared MIME type so that
+    non-PDF files are rejected before any bytes are written to disk.
+    """
+    name = upload_file.filename or ""
+    mime = (upload_file.content_type or "").lower().strip()
+    suffix = Path(name).suffix.lower()
+
+    if suffix != ".pdf" or mime not in {"application/pdf", "application/x-pdf"}:
+        raise HTTPException(
+            status_code=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE,
+            detail=f"Only PDF files are accepted. Received: name={name!r} type={mime!r}.",
+        )
 
 
 async def store_uploaded_document_file(

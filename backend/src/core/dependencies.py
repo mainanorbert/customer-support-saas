@@ -33,6 +33,13 @@ def _get_session_factory(database_url: str) -> sessionmaker[Session]:
     return create_session_factory(engine)
 
 
+def clear_database_caches() -> None:
+    """Clear LRU caches used by database and settings singletons (for tests)."""
+    get_settings.cache_clear()
+    get_database_engine.cache_clear()
+    _get_session_factory.cache_clear()
+
+
 def get_db_session(
     settings: Annotated[Settings, Depends(get_settings)],
 ) -> Generator[Session, None, None]:

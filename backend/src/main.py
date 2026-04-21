@@ -6,9 +6,10 @@ from pathlib import Path
 from fastapi import FastAPI
 
 from src.api.v1.routers import agents, companies, users
-from src.core.dependencies import get_database_engine, get_settings
 from src.core.config import Settings
 from src.core.database import Base
+from src.core.dependencies import get_database_engine, get_settings
+from src.core.pgvector_setup import database_url_is_postgresql, ensure_pgvector_extension
 import src.models  # noqa: F401
 
 
@@ -18,6 +19,8 @@ async def lifespan(_app: FastAPI):
     settings: Settings = get_settings()
     Path(settings.upload_root).expanduser().resolve().mkdir(parents=True, exist_ok=True)
     engine = get_database_engine(settings.database_url)
+    if database_url_is_postgresql(settings.database_url):
+        ensure_pgvector_extension(engine)
     Base.metadata.create_all(bind=engine)
     yield
 

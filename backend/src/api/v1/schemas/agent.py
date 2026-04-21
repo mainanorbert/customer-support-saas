@@ -1,15 +1,25 @@
-"""Request and response models for the simple agent endpoint."""
+"""Request and response models for the RAG-grounded agent endpoint."""
 
 from pydantic import BaseModel, Field
 
 
 class AgentChatRequest(BaseModel):
-    """Inbound chat payload for a single-turn agent reply."""
+    """Inbound chat payload for a RAG-grounded single-turn reply."""
 
-    message: str = Field(..., min_length=1, examples=["My order arrived damaged. What should I do?"])
+    company_id: str = Field(
+        ...,
+        min_length=1,
+        description="Tenant company whose embedded documents are searched for context.",
+        examples=["a1b2c3d4-0000-0000-0000-000000000000"],
+    )
+    message: str = Field(..., min_length=1, examples=["What is the refund policy?"])
 
 
 class AgentChatResponse(BaseModel):
-    """Assistant text returned from OpenRouter (no RAG)."""
+    """Assistant text returned after RAG retrieval and LLM generation."""
 
-    reply: str = Field(..., examples=["I'm sorry to hear that. Please send your order number and a photo..."])
+    reply: str = Field(..., examples=["According to the policy document, refunds are processed within 7 days..."])
+    grounded: bool = Field(
+        ...,
+        description="True when the reply is based on retrieved knowledge-base chunks; False when the query was out of scope.",
+    )

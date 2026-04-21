@@ -4,7 +4,7 @@ from pathlib import Path
 from typing import Annotated
 
 from clerk_backend_api.security.types import RequestState
-from fastapi import APIRouter, Depends, File, UploadFile, status
+from fastapi import APIRouter, BackgroundTasks, Depends, File, UploadFile, status
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
@@ -13,12 +13,16 @@ from src.api.v1.schemas.ingestion import (
     CompanyResponse,
     CompanyWithDocumentsResponse,
     DocumentResponse,
+    EmbedTriggerResponse,
 )
 from src.core.clerk_auth import get_authenticated_user_identity, require_clerk_session
 from src.core.config import Settings
 from src.core.dependencies import get_db_session, get_settings
 from src.models import generate_uuid
+from src.services.embedding_pipeline import run_embedding_pipeline_for_company
 from src.services.ingestion import (
+    assert_pdf_upload,
+    count_pending_documents,
     create_document_record,
     ensure_document_name_is_available,
     get_or_create_company,
@@ -121,6 +125,7 @@ async def post_company_documents(
     session_state: Annotated[RequestState, Depends(require_clerk_session)],
     settings: Annotated[Settings, Depends(get_settings)],
     db_session: Annotated[Session, Depends(get_db_session)],
+    background_tasks: BackgroundTasks,
     files: Annotated[list[UploadFile], File(...)],
 ) -> list[DocumentResponse]:
     """Store one or more uploaded documents on disk and persist their metadata.
@@ -132,6 +137,9 @@ async def post_company_documents(
     identity = get_authenticated_user_identity(session_state)
     user, _created = upsert_user(db_session, user_id=identity.user_id, email=identity.email)
     company = get_owned_company(db_session, company_id=company_id, owner_id=user.id)
+
+    for upload_file in files:
+        assert_pdf_upload(upload_file)
 
     safe_names = [sanitize_file_name(f.filename or "") for f in files]
     for safe_name in safe_names:
@@ -160,6 +168,12 @@ async def post_company_documents(
             )
             documents.append(doc)
         db_session.commit()
+        background_tasks.add_task(
+            run_embedding_pipeline_for_company,
+            database_url=settings.database_url,
+            upload_root=settings.upload_root,
+            company_id=company.id,
+        )
     except SQLAlchemyError as exc:
         db_session.rollback()
         for _doc_id, stored in stored_files:
@@ -172,3 +186,38 @@ async def post_company_documents(
         db_session.refresh(doc)
 
     return [build_document_response(doc) for doc in documents]
+
+
+@router.post(
+    "/{company_id}/embed",
+    response_model=EmbedTriggerResponse,
+    status_code=status.HTTP_202_ACCEPTED,
+)
+async def post_company_embed(
+    company_id: str,
+    session_state: Annotated[RequestState, Depends(require_clerk_session)],
+    settings: Annotated[Settings, Depends(get_settings)],
+    db_session: Annotated[Session, Depends(get_db_session)],
+    background_tasks: BackgroundTasks,
+) -> EmbedTriggerResponse:
+    """Trigger background embedding for all pending documents of a company.
+
+    Useful for retrying failed embeddings or processing documents uploaded before
+    the embedding service was configured. The caller gets an immediate 202 response
+    while the job runs asynchronously. Only the company owner may trigger this.
+    """
+    identity = get_authenticated_user_identity(session_state)
+    user, _created = upsert_user(db_session, user_id=identity.user_id, email=identity.email)
+    company = get_owned_company(db_session, company_id=company_id, owner_id=user.id)
+
+    pending = count_pending_documents(db_session, company_id=company.id)
+    background_tasks.add_task(
+        run_embedding_pipeline_for_company,
+        database_url=settings.database_url,
+        upload_root=settings.upload_root,
+        company_id=company.id,
+    )
+    return EmbedTriggerResponse(
+        message=f"Embedding started for {pending} pending document(s).",
+        company_id=company.id,
+    )

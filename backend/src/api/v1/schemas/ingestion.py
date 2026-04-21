@@ -51,3 +51,10 @@ class CompanyWithDocumentsResponse(BaseModel):
 
     company: CompanyResponse
     documents: list[DocumentResponse]
+
+
+class EmbedTriggerResponse(BaseModel):
+    """Response returned when an embedding job is dispatched to the background."""
+
+    message: str = Field(..., examples=["Embedding started for 3 pending document(s)."])
+    company_id: str = Field(..., examples=["a1b2c3d4-..."])

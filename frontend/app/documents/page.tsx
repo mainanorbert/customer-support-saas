@@ -5,6 +5,7 @@ import Link from "next/link"
 import { useCallback, useEffect, useRef, useState } from "react"
 import {
   ArrowLeft,
+  BrainCircuit,
   Building2,
   CheckCircle2,
   ChevronDown,
@@ -134,6 +135,22 @@ function status_badge_class(s: string): string {
   return "bg-muted text-muted-foreground"
 }
 
+/**
+ * Derives a label and colour class for the embedding status badge.
+ */
+function embedding_badge(doc: DocumentResponse): { label: string; cls: string; spinning: boolean } | null {
+  if (doc.is_embedded) {
+    return { label: "Embedded", cls: "bg-emerald-500/15 text-emerald-700 dark:text-emerald-400", spinning: false }
+  }
+  if (doc.status === "processing") {
+    return { label: "Embedding…", cls: "bg-sky-500/15 text-sky-700 dark:text-sky-400", spinning: true }
+  }
+  if (doc.status === "failed") {
+    return null
+  }
+  return { label: "Not embedded", cls: "bg-muted text-muted-foreground", spinning: false }
+}
+
 // ─── Sub-components ───────────────────────────────────────────────────────────
 
 /**
@@ -197,11 +214,27 @@ function DocumentCard({ doc, is_new }: { doc: DocumentResponse; is_new: boolean 
           </p>
         </div>
       </div>
-      <div className="flex items-center justify-between gap-2">
-        <span className={cn("inline-flex rounded-full px-2 py-0.5 text-xs font-medium", status_badge_class(doc.status))}>
-          {doc.status}
-        </span>
-        <span className="text-xs text-muted-foreground">{format_short_date(doc.created_at)}</span>
+      <div className="flex flex-col gap-1.5">
+        <div className="flex items-center justify-between gap-2">
+          <span className={cn("inline-flex rounded-full px-2 py-0.5 text-xs font-medium", status_badge_class(doc.status))}>
+            {doc.status}
+          </span>
+          <span className="text-xs text-muted-foreground">{format_short_date(doc.created_at)}</span>
+        </div>
+        {(() => {
+          const badge = embedding_badge(doc)
+          if (!badge) return null
+          return (
+            <span className={cn("inline-flex w-fit items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium", badge.cls)}>
+              {badge.spinning ? (
+                <Loader2 className="size-2.5 animate-spin" aria-hidden />
+              ) : (
+                <BrainCircuit className="size-2.5" aria-hidden />
+              )}
+              {badge.label}
+            </span>
+          )
+        })()}
       </div>
     </div>
   )
@@ -226,6 +259,7 @@ export default function DocumentsPage() {
   const [creating_company, set_creating_company] = useState(false)
   const [list_loading, set_list_loading] = useState(false)
   const [uploading, set_uploading] = useState(false)
+  const [triggering_embed, set_triggering_embed] = useState(false)
   const [error, set_error] = useState<string | null>(null)
 
   const file_input_ref = useRef<HTMLInputElement | null>(null)
@@ -310,7 +344,10 @@ export default function DocumentsPage() {
   // ── File queue management ──────────────────────────────────────────────────
 
   const enqueue_files = useCallback((file_list: FileList | File[]) => {
-    const incoming = Array.from(file_list).map((file) => ({
+    const pdf_only = Array.from(file_list).filter(
+      (f) => f.type === "application/pdf" || f.name.toLowerCase().endsWith(".pdf"),
+    )
+    const incoming = pdf_only.map((file) => ({
       id: `${Date.now()}-${Math.random().toString(36).slice(2)}-${file.name}`,
       file,
     }))
@@ -349,6 +386,25 @@ export default function DocumentsPage() {
       set_uploading(false)
     }
   }, [selected_company_id, queued_files, load_documents])
+
+  // ── Embed ──────────────────────────────────────────────────────────────────
+
+  const trigger_embed = useCallback(async () => {
+    if (!selected_company_id) return
+    set_triggering_embed(true)
+    set_error(null)
+    try {
+      const res = await fetch(
+        `/api/ingestion/companies/${encodeURIComponent(selected_company_id)}/embed`,
+        { method: "POST" },
+      )
+      const data: unknown = await res.json().catch(() => ({}))
+      if (!res.ok) { set_error(format_error_payload(data)); return }
+      await load_documents(selected_company_id)
+    } finally {
+      set_triggering_embed(false)
+    }
+  }, [selected_company_id, load_documents])
 
   const can_create_company = company_name.trim().length > 0 && company_email.trim().length > 0
   const selected_company = companies.find((c) => c.id === selected_company_id)
@@ -489,6 +545,7 @@ export default function DocumentsPage() {
                     ref={file_input_ref}
                     type="file"
                     multiple
+                    accept=".pdf,application/pdf"
                     className="sr-only"
                     onChange={(e) => {
                       if (e.target.files) enqueue_files(e.target.files)
@@ -588,21 +645,38 @@ export default function DocumentsPage() {
                       </span>
                     )}
                   </h2>
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="sm"
-                    className="gap-1.5 text-xs text-muted-foreground"
-                    disabled={!selected_company_id || list_loading}
-                    onClick={() => selected_company_id && void load_documents(selected_company_id)}
-                  >
-                    {list_loading ? (
-                      <Loader2 className="size-3.5 animate-spin" />
-                    ) : (
-                      <RefreshCw className="size-3.5" />
-                    )}
-                    Refresh
-                  </Button>
+                  <div className="flex items-center gap-1">
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      className="gap-1.5 text-xs text-muted-foreground"
+                      disabled={!selected_company_id || triggering_embed}
+                      onClick={() => selected_company_id && void trigger_embed()}
+                    >
+                      {triggering_embed ? (
+                        <Loader2 className="size-3.5 animate-spin" />
+                      ) : (
+                        <BrainCircuit className="size-3.5" />
+                      )}
+                      Embed pending
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      className="gap-1.5 text-xs text-muted-foreground"
+                      disabled={!selected_company_id || list_loading}
+                      onClick={() => selected_company_id && void load_documents(selected_company_id)}
+                    >
+                      {list_loading ? (
+                        <Loader2 className="size-3.5 animate-spin" />
+                      ) : (
+                        <RefreshCw className="size-3.5" />
+                      )}
+                      Refresh
+                    </Button>
+                  </div>
                 </div>
 
                 {!selected_company_id ? (

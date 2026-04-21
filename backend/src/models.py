@@ -3,15 +3,20 @@
 import uuid
 from datetime import datetime
 
-from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, String, Text, UniqueConstraint, func
+from sqlalchemy import Boolean, DateTime, ForeignKey, Index, Integer, JSON, String, Text, UniqueConstraint, func
 from sqlalchemy.orm import Mapped, mapped_column
 
 from src.core.database import Base
+from src.core.embedding_vector import EmbeddingVector
 
 
 def generate_uuid() -> str:
     """Return a new UUID string for primary keys stored as text."""
     return str(uuid.uuid4())
+
+
+# Must match ``Settings.embedding_dimensions`` default and the DB column width.
+EMBEDDING_SCHEMA_DIMENSION = 1536
 
 
 class User(Base):
@@ -82,3 +87,30 @@ class Document(Base):
         nullable=False,
         server_default=func.now(),
     )
+
+
+class DocumentChunk(Base):
+    """Text segment and embedding vector for RAG; tenant-scoped via ``company_id``."""
+
+    __tablename__ = "document_chunks"
+    __table_args__ = (
+        UniqueConstraint("document_id", "chunk_index", name="uq_document_chunks_document_chunk_index"),
+        Index("ix_document_chunks_company_id", "company_id"),
+        Index("ix_document_chunks_company_document", "company_id", "document_id"),
+    )
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=generate_uuid)
+    company_id: Mapped[str] = mapped_column(
+        String(36),
+        ForeignKey("companies.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    document_id: Mapped[str] = mapped_column(
+        String(36),
+        ForeignKey("documents.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    content: Mapped[str] = mapped_column(Text, nullable=False)
+    embedding: Mapped[list[float]] = mapped_column(EmbeddingVector(EMBEDDING_SCHEMA_DIMENSION), nullable=False)
+    chunk_index: Mapped[int] = mapped_column(Integer, nullable=False)
+    chunk_metadata: Mapped[dict | None] = mapped_column("metadata", JSON, nullable=True)

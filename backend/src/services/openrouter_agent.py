@@ -1,10 +1,14 @@
-"""Minimal OpenRouter chat completions (no RAG, no tools)."""
+"""OpenRouter chat completions with RAG context injection."""
 
-from openai import AsyncOpenAI
+from openai import AsyncOpenAI, OpenAI
 
-DEFAULT_SYSTEM_PROMPT = (
-    "You are a helpful customer support assistant. "
-    "Reply clearly and briefly unless the user asks for detail."
+_RAG_SYSTEM_PROMPT = (
+    "You are a helpful customer support assistant.\n"
+    "Answer the user's question using ONLY the knowledge-base excerpts provided below.\n"
+    "Be clear and concise. If the excerpts do not fully answer the question, say so honestly "
+    "but do not invent information.\n\n"
+    "Knowledge-base excerpts:\n"
+    "{context}"
 )
 
 
@@ -13,22 +17,32 @@ def create_openrouter_async_client(*, api_key: str, base_url: str) -> AsyncOpenA
     return AsyncOpenAI(base_url=base_url, api_key=api_key)
 
 
-async def generate_simple_agent_reply(
+def create_openrouter_sync_client(*, api_key: str, base_url: str) -> OpenAI:
+    """Create a synchronous OpenAI client that targets OpenRouter's API."""
+    return OpenAI(base_url=base_url, api_key=api_key)
+
+
+async def generate_rag_reply(
     *,
     client: AsyncOpenAI,
     model: str,
     user_message: str,
-    system_prompt: str | None = None,
+    context: str,
 ) -> str:
-    """Run a single chat completion and return assistant text."""
+    """Generate a support reply grounded in the provided RAG context.
+
+    ``context`` is the concatenated chunk text returned by the retrieval step.
+    The LLM is instructed to answer only from that context.
+    """
+    system_content = _RAG_SYSTEM_PROMPT.format(context=context)
     messages: list[dict[str, str]] = [
-        {"role": "system", "content": system_prompt or DEFAULT_SYSTEM_PROMPT},
+        {"role": "system", "content": system_content},
         {"role": "user", "content": user_message},
     ]
     response = await client.chat.completions.create(
         model=model,
         messages=messages,
-        temperature=0.4,
+        temperature=0.2,
     )
     choice = response.choices[0].message.content
     if choice is None:
