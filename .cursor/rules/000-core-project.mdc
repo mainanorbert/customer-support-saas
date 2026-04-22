@@ -13,13 +13,3 @@ Functions must be properly documented using docstring
 
 
 
-Guardrails:
-
-Not to expose personal information
-
-
-Rag Pipiline
-
-
-
-upload, save, files, generate markdown, save the markdown files based on 

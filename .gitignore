@@ -103,3 +103,11 @@ poetry.lock
 
 # Others
 __pypackages__/
+
+database.db
+/storage
+/backend/storage
+/backend/database.db
+/frontend/storage
+/frontend/database.db
+/backend/data

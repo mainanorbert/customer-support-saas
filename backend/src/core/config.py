@@ -53,14 +53,14 @@ class Settings(BaseSettings):
         description="Number of nearest chunks to retrieve per query",
     )
     rag_similarity_threshold: float = Field(
-        default=0.35,
+        default=0.25,
         ge=0.0,
         le=1.0,
         description=(
             "Cosine similarity floor (0–1). Queries whose best chunk similarity falls below "
-            "this value are considered out-of-scope and receive a polite refusal. "
-            "For OpenAI text-embedding-3-* models, relevant matches usually score 0.35–0.6; "
-            "tune via RAG_SIMILARITY_THRESHOLD in .env."
+            "this value are considered out-of-scope and receive a company-aware refusal. "
+            "For OpenAI text-embedding-3-* models, relevant matches typically score 0.25–0.60 "
+            "and unrelated noise sits below 0.15. Tune via RAG_SIMILARITY_THRESHOLD in .env."
         ),
     )
     clerk_secret_key: str = Field(..., description="Clerk secret key for verifying session JWTs")
