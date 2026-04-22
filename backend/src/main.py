@@ -35,3 +35,9 @@ app.include_router(companies.router, prefix="/api/v1")
 async def get_health() -> dict[str, str]:
     """Liveness probe for orchestrators and local checks."""
     return {"status": "ok"}
+
+
+from fastapi.staticfiles import StaticFiles
+from fastapi.responses import FileResponse
+
+app.mount("/", StaticFiles(directory="static", html=True), name="static")
