@@ -75,6 +75,9 @@ export default function Page() {
               <Button size="sm" className="hidden sm:inline-flex" asChild>
                 <Link href="/chat">Chat</Link>
               </Button>
+              <Button size="sm" variant="outline" className="hidden sm:inline-flex" asChild>
+                <Link href="/documents">Create agent</Link>
+              </Button>
               <UserButton
                 afterSignOutUrl="/"
                 appearance={{
@@ -117,6 +120,9 @@ export default function Page() {
                   Open support chat
                   <ArrowRight className="size-4" aria-hidden />
                 </Link>
+              </Button>
+              <Button size="lg" variant="outline" className="min-w-[220px]" asChild>
+                <Link href="/documents">Create agent</Link>
               </Button>
             </SignedIn>
           </div>

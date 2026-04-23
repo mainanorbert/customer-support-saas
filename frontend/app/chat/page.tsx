@@ -189,7 +189,7 @@ export default function ChatPage() {
             </p>
           </div>
           <Button variant="outline" size="sm" className="hidden shrink-0 sm:inline-flex" asChild>
-            <Link href="/documents">Documents</Link>
+            <Link href="/documents">Create agent</Link>
           </Button>
           <ThemeToggle />
           <UserButton afterSignOutUrl="/" />
@@ -212,7 +212,7 @@ export default function ChatPage() {
             <p className="text-sm text-muted-foreground">
               No companies yet.{" "}
               <Link href="/documents" className="font-medium text-primary underline-offset-4 hover:underline">
-                Create a company and upload PDFs
+                Create an agent and upload PDFs
               </Link>{" "}
               before chatting.
             </p>
