@@ -112,3 +112,5 @@ database.db
 /frontend/storage
 /frontend/database.db
 /backend/data
+*:Zone.Identifier
+

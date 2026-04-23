@@ -24,6 +24,7 @@ from agents import Agent, OpenAIChatCompletionsModel, Runner, function_tool, tra
 from openai import AsyncOpenAI
 from sqlalchemy.orm import Session
 
+from src.services.cost_monitoring import UsageCharge, fetch_openrouter_generation_charges
 from src.services.rag_retrieval import (
     build_context_from_chunks,
     embed_query,
@@ -78,6 +79,7 @@ def make_followup_tool(
     embedding_model: str,
     embedding_dimensions: int,
     top_k: int,
+    usage_charges: list[UsageCharge],
 ) -> object:
     """Return a ``function_tool`` the answer agent may call for extra context."""
 
@@ -97,12 +99,14 @@ def make_followup_tool(
             company_id,
             query[:120],
         )
-        query_vector = await embed_query(
+        query_vector, usage_charge = await embed_query(
             async_client,
             query,
             model=embedding_model,
             dimensions=embedding_dimensions,
         )
+        if usage_charge is not None:
+            usage_charges.append(usage_charge)
         chunks = retrieve_chunks_from_db(
             db_session,
             company_id=company_id,
@@ -130,8 +134,10 @@ async def run_rag_agent(
     embedding_dimensions: int,
     top_k: int,
     similarity_threshold: float,
-) -> tuple[str, bool]:
-    """Run the two-phase RAG pipeline and return ``(reply, grounded)``.
+    openrouter_api_key: str,
+    openrouter_base_url: str,
+) -> tuple[str, bool, list[UsageCharge]]:
+    """Run the two-phase RAG pipeline and return reply, grounding flag, and usage.
 
     Phase 1 – deterministic retrieval:
         Always embeds the user question and queries pgvector directly.  No LLM
@@ -156,12 +162,16 @@ async def run_rag_agent(
         user_message[:120],
     )
 
-    query_vector = await embed_query(
+    usage_charges: list[UsageCharge] = []
+
+    query_vector, usage_charge = await embed_query(
         async_client,
         user_message,
         model=embedding_model,
         dimensions=embedding_dimensions,
     )
+    if usage_charge is not None:
+        usage_charges.append(usage_charge)
     chunks = retrieve_chunks_from_db(
         db_session,
         company_id=company_id,
@@ -171,7 +181,7 @@ async def run_rag_agent(
 
     if not chunks:
         logger.info("RAG: no chunks in DB for company_id=%s", company_id)
-        return _OUT_OF_SCOPE_TEMPLATE.format(company_name=company_name), False
+        return _OUT_OF_SCOPE_TEMPLATE.format(company_name=company_name), False, usage_charges
 
     best_similarity = float(chunks[0].get("similarity", 0.0))
     logger.info(
@@ -189,7 +199,7 @@ async def run_rag_agent(
             best_similarity,
             similarity_threshold,
         )
-        return _OUT_OF_SCOPE_TEMPLATE.format(company_name=company_name), False
+        return _OUT_OF_SCOPE_TEMPLATE.format(company_name=company_name), False, usage_charges
 
     context = build_context_from_chunks(chunks)
 
@@ -207,6 +217,7 @@ async def run_rag_agent(
         embedding_model=embedding_model,
         embedding_dimensions=embedding_dimensions,
         top_k=top_k,
+        usage_charges=usage_charges,
     )
 
     answer_agent = Agent(
@@ -224,13 +235,26 @@ async def run_rag_agent(
         logger.info("RAG answer agent starting for company_id=%s", company_id)
         result = await Runner.run(answer_agent, user_message)
 
+    generation_ids = [
+        response_id
+        for response_id in [getattr(raw_response, "response_id", None) for raw_response in getattr(result, "raw_responses", [])]
+        if isinstance(response_id, str) and response_id
+    ]
+    usage_charges.extend(
+        await fetch_openrouter_generation_charges(
+            api_key=openrouter_api_key,
+            base_url=openrouter_base_url,
+            generation_ids=generation_ids,
+        )
+    )
+
     reply = (result.final_output or "").strip()
     if not reply:
-        return _OUT_OF_SCOPE_TEMPLATE.format(company_name=company_name), False
+        return _OUT_OF_SCOPE_TEMPLATE.format(company_name=company_name), False, usage_charges
 
     logger.info(
         "RAG pipeline complete: company_id=%s grounded=True reply_len=%d",
         company_id,
         len(reply),
     )
-    return reply, True
+    return reply, True, usage_charges

@@ -1,6 +1,4 @@
 """Routes for company management and multi-file document ingestion."""
-
-from pathlib import Path
 from typing import Annotated
 
 from clerk_backend_api.security.types import RequestState
@@ -24,6 +22,7 @@ from src.services.ingestion import (
     assert_pdf_upload,
     count_pending_documents,
     create_document_record,
+    delete_stored_document_file,
     ensure_document_name_is_available,
     get_or_create_company,
     get_owned_company,
@@ -128,11 +127,11 @@ async def post_company_documents(
     background_tasks: BackgroundTasks,
     files: Annotated[list[UploadFile], File(...)],
 ) -> list[DocumentResponse]:
-    """Store one or more uploaded documents on disk and persist their metadata.
+    """Store one or more uploaded documents and persist their metadata.
 
-    Each file is validated for a unique name within the company before being written.
+    Each file is validated for a unique name within the company before being stored.
     All files are processed in a single database transaction; if any insert fails the
-    transaction is rolled back and all already-written files are removed from disk.
+    transaction is rolled back and all already-stored files are removed.
     """
     identity = get_authenticated_user_identity(session_state)
     user, _created = upsert_user(db_session, user_id=identity.user_id, email=identity.email)
@@ -149,7 +148,7 @@ async def post_company_documents(
     for upload_file in files:
         document_id = generate_uuid()
         stored = await store_uploaded_document_file(
-            upload_root=settings.upload_root,
+            settings=settings,
             company_id=company.id,
             document_id=document_id,
             upload_file=upload_file,
@@ -177,9 +176,7 @@ async def post_company_documents(
     except SQLAlchemyError as exc:
         db_session.rollback()
         for _doc_id, stored in stored_files:
-            Path(settings.upload_root).expanduser().resolve().joinpath(
-                company.id, Path(stored.file_path).name
-            ).unlink(missing_ok=True)
+            await delete_stored_document_file(settings=settings, file_path=stored.file_path)
         raise exc
 
     for doc in documents:

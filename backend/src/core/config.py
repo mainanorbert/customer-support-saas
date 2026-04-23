@@ -52,6 +52,30 @@ class Settings(BaseSettings):
         le=20,
         description="Number of nearest chunks to retrieve per query",
     )
+    guardrail_max_input_tokens: int = Field(
+        default=500,
+        ge=16,
+        le=8000,
+        description=(
+            "Maximum number of tokens permitted in a single user prompt. Requests above this "
+            "limit are rejected before any embedding or LLM call so cost stays predictable and "
+            "answers stay focused. Tune via GUARDRAIL_MAX_INPUT_TOKENS in .env."
+        ),
+    )
+    guardrail_token_encoding: str = Field(
+        default="cl100k_base",
+        description=(
+            "tiktoken encoding name used for input token counting. cl100k_base is correct for "
+            "GPT-4 / GPT-3.5 / text-embedding-3-* models and is a safe default for OpenRouter."
+        ),
+    )
+    guardrail_phone_country_code: str = Field(
+        default="254",
+        description=(
+            "Country dialing code (without '+') used to detect monitored phone numbers in "
+            "model replies. Defaults to Kenya (+254)."
+        ),
+    )
     rag_similarity_threshold: float = Field(
         default=0.25,
         ge=0.0,
@@ -65,7 +89,7 @@ class Settings(BaseSettings):
     )
     clerk_secret_key: str = Field(..., description="Clerk secret key for verifying session JWTs")
     clerk_authorized_parties: str = Field(
-        default="http://localhost:3000,http://127.0.0.1:3000",
+        default="https://css-f-brown.vercel.app",
         description="Comma-separated frontend origins allowed in Clerk session tokens (azp)",
     )
     database_url: str = Field(
@@ -74,7 +98,36 @@ class Settings(BaseSettings):
     )
     upload_root: str = Field(
         default="./storage",
-        description="Root directory where uploaded files are stored locally",
+        description="Root directory where uploaded files are stored locally when Supabase is not configured",
+    )
+    supabase_url: str | None = Field(
+        default=None,
+        validation_alias=AliasChoices("SUPABASE_URL"),
+        description="Supabase project URL used for server-side Storage access",
+    )
+    supabase_service_key: str | None = Field(
+        default=None,
+        validation_alias=AliasChoices("SUPABASE_SERVICE_KEY", "SUPABASE_SECRET_KEY", "SUPABASE_KEY"),
+        description="Server-only Supabase API key used to bypass Storage RLS from the backend",
+    )
+    supabase_bucket: str = Field(
+        default="documents",
+        validation_alias=AliasChoices("SUPABASE_BUCKET", "SUPABASE_STORAGE_BUCKET"),
+        description="Supabase Storage bucket name for uploaded document binaries",
+    )
+    cors_allowed_origins: str = Field(
+        default="https://css-f-brown.vercel.app",
+        description=(
+            "Comma-separated browser origins allowed to call this API (CORS). "
+            "Set explicitly in production to your deployed frontend origin(s)."
+        ),
+    )
+    cors_allow_credentials: bool = Field(
+        default=False,
+        description=(
+            "Whether browsers may send credentialed cross-origin requests (cookies). "
+            "Enable only if your frontend uses credentials mode for API calls."
+        ),
     )
 
     @field_validator("database_url", mode="before")
@@ -83,4 +136,13 @@ class Settings(BaseSettings):
         """Normalize postgres:// shorthand to the SQLAlchemy psycopg2 dialect prefix."""
         if isinstance(v, str) and v.startswith("postgres://"):
             return v.replace("postgres://", "postgresql+psycopg2://", 1)
+        return v
+
+    @field_validator("supabase_url", mode="before")
+    @classmethod
+    def normalize_supabase_url(cls, v: str | None) -> str | None:
+        """Remove trailing slashes from the configured Supabase project URL."""
+        if isinstance(v, str):
+            stripped = v.strip()
+            return stripped.rstrip("/") or None
         return v

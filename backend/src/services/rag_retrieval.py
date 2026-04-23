@@ -8,6 +8,8 @@ from openai import AsyncOpenAI
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
+from src.services.cost_monitoring import UsageCharge, usage_charge_from_openrouter_usage
+
 logger = logging.getLogger(__name__)
 
 
@@ -17,8 +19,8 @@ async def embed_query(
     *,
     model: str,
     dimensions: int,
-) -> list[float]:
-    """Return the embedding vector for a single query string using the OpenAI embeddings API."""
+) -> tuple[list[float], UsageCharge | None]:
+    """Return the embedding vector and billed usage for a single query string."""
     response = await client.embeddings.create(model=model, input=[query])
     vector = list(response.data[0].embedding)
     if len(vector) != dimensions:
@@ -27,7 +29,7 @@ async def embed_query(
             "Check embedding_model / embedding_dimensions in settings."
         )
         raise ValueError(msg)
-    return vector
+    return vector, usage_charge_from_openrouter_usage(getattr(response, "usage", None))
 
 
 def retrieve_chunks_from_db(

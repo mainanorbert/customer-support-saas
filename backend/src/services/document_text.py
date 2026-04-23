@@ -1,10 +1,14 @@
-"""Extract plain text from uploaded files stored under ``upload_root``."""
+"""Extract plain text from uploaded files stored locally or in Supabase."""
 
 from __future__ import annotations
 
+from io import BytesIO
 from pathlib import Path
 
 from pypdf import PdfReader
+
+from src.core.config import Settings
+from src.services.supabase_storage import download_file_bytes_from_supabase, uses_supabase_storage
 
 
 class UnsupportedDocumentFormatError(ValueError):
@@ -23,24 +27,28 @@ def resolve_stored_document_path(*, upload_root: str, file_path: str) -> Path:
 
 def extract_document_text(
     *,
+    settings: Settings,
     upload_root: str,
     file_path: str,
     file_name: str,
     file_type: str | None,
 ) -> str:
-    """Read a stored PDF upload from disk and return UTF-8 text suitable for chunking.
+    """Read a stored PDF upload and return UTF-8 text suitable for chunking.
 
     Only PDF files are supported. Any other format raises ``UnsupportedDocumentFormatError``.
     """
-    path = resolve_stored_document_path(upload_root=upload_root, file_path=file_path)
-    if not path.is_file():
-        msg = f"Upload file missing on disk: {path}"
-        raise FileNotFoundError(msg)
-
-    suffix = path.suffix.lower()
+    suffix = Path(file_name).suffix.lower()
     mime = (file_type or "").lower()
 
     if suffix == ".pdf" or "pdf" in mime:
+        if uses_supabase_storage(settings):
+            file_bytes = download_file_bytes_from_supabase(settings=settings, file_path=file_path)
+            return _extract_pdf_bytes(file_bytes)
+
+        path = resolve_stored_document_path(upload_root=upload_root, file_path=file_path)
+        if not path.is_file():
+            msg = f"Upload file missing on disk: {path}"
+            raise FileNotFoundError(msg)
         return _extract_pdf_text(path)
 
     raise UnsupportedDocumentFormatError(
@@ -51,6 +59,17 @@ def extract_document_text(
 def _extract_pdf_text(path: Path) -> str:
     """Return joined text from all pages of a PDF file."""
     reader = PdfReader(str(path))
+    return _join_pdf_page_text(reader)
+
+
+def _extract_pdf_bytes(file_bytes: bytes) -> str:
+    """Return joined text from all pages of a PDF file loaded from bytes."""
+    reader = PdfReader(BytesIO(file_bytes))
+    return _join_pdf_page_text(reader)
+
+
+def _join_pdf_page_text(reader: PdfReader) -> str:
+    """Join extracted text from all non-empty pages in a PDF reader."""
     parts: list[str] = []
     for page in reader.pages:
         extracted = page.extract_text() or ""

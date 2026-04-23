@@ -1,4 +1,4 @@
-"""Services for local user sync, tenant setup, and document file ingestion."""
+"""Services for user sync, tenant setup, and document file ingestion."""
 
 from dataclasses import dataclass
 from pathlib import Path
@@ -6,7 +6,9 @@ from pathlib import Path
 from fastapi import HTTPException, UploadFile, status
 from sqlalchemy.orm import Session
 
+from src.core.config import Settings
 from src.models import Company, Document, User, generate_uuid
+from src.services.supabase_storage import delete_file_from_supabase, upload_file_bytes_to_supabase, uses_supabase_storage
 
 DOCUMENT_STATUS_PENDING = "pending"
 DOCUMENT_STATUS_PROCESSING = "processing"
@@ -16,7 +18,7 @@ DOCUMENT_STATUS_FAILED = "failed"
 
 @dataclass(frozen=True)
 class StoredDocumentFile:
-    """Metadata captured after persisting an uploaded file to local storage."""
+    """Metadata captured after persisting an uploaded file to durable storage."""
 
     file_name: str
     file_path: str
@@ -159,48 +161,66 @@ def assert_pdf_upload(upload_file: UploadFile) -> None:
 
 async def store_uploaded_document_file(
     *,
-    upload_root: str,
+    settings: Settings,
     company_id: str,
     document_id: str,
     upload_file: UploadFile,
 ) -> StoredDocumentFile:
-    """Persist an uploaded file under the company storage folder and return its metadata.
+    """Persist an uploaded file and return the metadata stored in the database.
 
-    Files are written to ``{upload_root}/{company_id}/{document_id}_{file_name}`` so
-    each file is uniquely addressed on disk even when names are reused across document
-    lifecycle (delete + re-upload).  The stored path recorded in the database uses the
-    same ``storage/{company_id}/{stored_name}`` relative format defined in the schema.
+    The stored path recorded in the database always uses the ``storage/{company_id}/{stored_name}``
+    format defined in the schema so the metadata layer remains stable regardless of whether
+    the bytes are written to local disk or uploaded to Supabase Storage.
     """
     original_name = upload_file.filename or ""
     safe_name = sanitize_file_name(original_name)
-    target_directory = Path(upload_root).expanduser().resolve() / company_id
-    target_directory.mkdir(parents=True, exist_ok=True)
-
     stored_name = f"{document_id}_{safe_name}"
-    destination_path = target_directory / stored_name
-
+    relative_path = f"storage/{company_id}/{stored_name}"
+    content_type = upload_file.content_type
     file_size = 0
-    with destination_path.open("wb") as output_stream:
-        while True:
-            chunk = await upload_file.read(1024 * 1024)
-            if not chunk:
-                break
-            file_size += len(chunk)
-            output_stream.write(chunk)
+    file_bytes = bytearray()
+    while True:
+        chunk = await upload_file.read(1024 * 1024)
+        if not chunk:
+            break
+        file_size += len(chunk)
+        file_bytes.extend(chunk)
 
     await upload_file.close()
 
     if file_size == 0:
-        destination_path.unlink(missing_ok=True)
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Uploaded file is empty.")
 
-    relative_path = f"storage/{company_id}/{stored_name}"
+    if uses_supabase_storage(settings):
+        await upload_file_bytes_to_supabase(
+            settings=settings,
+            file_path=relative_path,
+            file_bytes=bytes(file_bytes),
+            content_type=content_type,
+        )
+    else:
+        target_directory = Path(settings.upload_root).expanduser().resolve() / company_id
+        target_directory.mkdir(parents=True, exist_ok=True)
+        destination_path = target_directory / stored_name
+        destination_path.write_bytes(file_bytes)
+
     return StoredDocumentFile(
         file_name=safe_name,
         file_path=relative_path,
         file_size=file_size,
-        file_type=upload_file.content_type,
+        file_type=content_type,
     )
+
+
+async def delete_stored_document_file(*, settings: Settings, file_path: str) -> None:
+    """Delete a previously stored document from the active storage backend."""
+    if uses_supabase_storage(settings):
+        await delete_file_from_supabase(settings=settings, file_path=file_path)
+        return
+
+    relative_path = file_path.removeprefix("storage/").lstrip("/")
+    target_path = Path(settings.upload_root).expanduser().resolve() / relative_path
+    target_path.unlink(missing_ok=True)
 
 
 def create_document_record(
@@ -211,7 +231,7 @@ def create_document_record(
     uploaded_by: str,
     stored_file: StoredDocumentFile,
 ) -> Document:
-    """Insert a document metadata record for a file already saved to disk."""
+    """Insert a document metadata record for a file already stored."""
     document = Document(
         id=document_id,
         company_id=company_id,
