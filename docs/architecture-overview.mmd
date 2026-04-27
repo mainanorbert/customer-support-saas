@@ -1,27 +1,27 @@
 flowchart LR
   subgraph Frontend
-    Web[Next.js app]
+    Web["Next.js app"]
   end
 
   subgraph Backend
-    API[FastAPI API]
-    Tasks[Background tasks<br/>(embeddings)]
+    API["FastAPI API"]
+    Tasks["Background tasks · embeddings"]
   end
 
   subgraph Data
-    DB[(Aiven Postgres<br/>pgvector)]
-    Storage[Supabase Storage<br/>or local disk]
+    DB["Aiven Postgres · pgvector"]
+    Storage["Supabase Storage · local disk"]
   end
 
   subgraph AI
-    OpenRouter[OpenRouter API<br/>GPT-4.1 Mini]
-    Embeddings[Text Embedding 3 Small]
+    OpenRouter["OpenRouter API · GPT-4.1 Mini"]
+    Embeddings["Text Embedding 3 Small"]
   end
 
-  Web -->|Auth + UI| API
-  API -->|Reads/Writes| DB
-  API -->|Uploads| Storage
-  API -->|RAG chat| OpenRouter
-  API -->|Embed docs| Embeddings
+  Web -->|"Auth + UI"| API
+  API -->|"Reads/Writes"| DB
+  API -->|"Uploads"| Storage
+  API -->|"RAG chat"| OpenRouter
+  API -->|"Embed docs"| Embeddings
   API --> Tasks
   Tasks --> DB
