@@ -61,6 +61,20 @@ type QueuedFile = {
   file: File
 }
 
+type UploadTicket = {
+  document_id: string
+  file_name: string
+  file_path: string
+  upload_url: string
+  method: "PUT"
+  content_type: string
+}
+
+type UploadsMintResponse = {
+  mode: "direct" | "multipart"
+  uploads: UploadTicket[]
+}
+
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
 /**
@@ -363,20 +377,125 @@ export default function DocumentsPage() {
 
   // ── Upload ─────────────────────────────────────────────────────────────────
 
+  /**
+   * Legacy multipart upload, used when the backend signals mode="multipart"
+   * (i.e. Supabase storage is not configured, e.g. local dev).
+   */
+  const upload_via_multipart = useCallback(
+    async (company_id: string, entries: QueuedFile[]): Promise<DocumentResponse[] | null> => {
+      const form = new FormData()
+      for (const entry of entries) form.append("files", entry.file)
+      const res = await fetch(
+        `/api/ingestion/companies/${encodeURIComponent(company_id)}/documents`,
+        { method: "POST", body: form },
+      )
+      const data: unknown = await res.json().catch(() => ({}))
+      if (!res.ok) {
+        set_error(format_error_payload(data))
+        return null
+      }
+      return (Array.isArray(data) ? data : []) as DocumentResponse[]
+    },
+    [],
+  )
+
+  /**
+   * Direct-to-Supabase upload via signed URLs. Bypasses the backend entirely
+   * for the file bytes, so free-tier hosts cannot become a transfer bottleneck.
+   */
+  const upload_via_signed_urls = useCallback(
+    async (
+      company_id: string,
+      entries: QueuedFile[],
+      tickets: UploadTicket[],
+    ): Promise<DocumentResponse[] | null> => {
+      const ticket_by_name = new Map(tickets.map((t) => [t.file_name, t]))
+      for (const entry of entries) {
+        const ticket = ticket_by_name.get(entry.file.name)
+        if (!ticket) {
+          set_error(`No upload ticket for ${entry.file.name}`)
+          return null
+        }
+        let put_response: Response
+        try {
+          put_response = await fetch(ticket.upload_url, {
+            method: ticket.method,
+            headers: { "Content-Type": ticket.content_type },
+            body: entry.file,
+          })
+        } catch (err) {
+          const msg = err instanceof Error ? err.message : "network error"
+          set_error(`Upload of ${entry.file.name} failed: ${msg}`)
+          return null
+        }
+        if (!put_response.ok) {
+          const body = await put_response.text().catch(() => "")
+          set_error(`Upload of ${entry.file.name} failed (${put_response.status}): ${body.slice(0, 200)}`)
+          return null
+        }
+      }
+
+      const confirm_payload = {
+        documents: tickets.map((t) => ({
+          document_id: t.document_id,
+          file_path: t.file_path,
+          file_name: t.file_name,
+          content_type: t.content_type,
+        })),
+      }
+      const confirm_res = await fetch(
+        `/api/ingestion/companies/${encodeURIComponent(company_id)}/documents/confirm`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(confirm_payload),
+        },
+      )
+      const confirm_data: unknown = await confirm_res.json().catch(() => ({}))
+      if (!confirm_res.ok) {
+        set_error(format_error_payload(confirm_data))
+        return null
+      }
+      return (Array.isArray(confirm_data) ? confirm_data : []) as DocumentResponse[]
+    },
+    [],
+  )
+
   const upload_queued = useCallback(async () => {
     if (!selected_company_id || queued_files.length === 0) return
     set_uploading(true)
     set_error(null)
     try {
-      const form = new FormData()
-      for (const entry of queued_files) form.append("files", entry.file)
-      const res = await fetch(
-        `/api/ingestion/companies/${encodeURIComponent(selected_company_id)}/documents`,
-        { method: "POST", body: form },
+      const file_meta = {
+        files: queued_files.map((entry) => ({
+          file_name: entry.file.name,
+          file_size: entry.file.size,
+          content_type: entry.file.type || "application/pdf",
+        })),
+      }
+      const mint_res = await fetch(
+        `/api/ingestion/companies/${encodeURIComponent(selected_company_id)}/documents/uploads`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(file_meta),
+        },
       )
-      const data: unknown = await res.json().catch(() => ({}))
-      if (!res.ok) { set_error(format_error_payload(data)); return }
-      const uploaded = (Array.isArray(data) ? data : []) as DocumentResponse[]
+      const mint_data: unknown = await mint_res.json().catch(() => ({}))
+      if (!mint_res.ok) {
+        set_error(format_error_payload(mint_data))
+        return
+      }
+      const mint_parsed = mint_data as Partial<UploadsMintResponse>
+
+      let uploaded: DocumentResponse[] | null
+      if (mint_parsed.mode === "direct" && Array.isArray(mint_parsed.uploads)) {
+        uploaded = await upload_via_signed_urls(selected_company_id, queued_files, mint_parsed.uploads)
+      } else {
+        uploaded = await upload_via_multipart(selected_company_id, queued_files)
+      }
+      if (!uploaded) return
+
       const ids = new Set(uploaded.map((d) => d.id))
       set_new_doc_ids(ids)
       setTimeout(() => set_new_doc_ids(new Set()), 6000)
@@ -385,7 +504,13 @@ export default function DocumentsPage() {
     } finally {
       set_uploading(false)
     }
-  }, [selected_company_id, queued_files, load_documents])
+  }, [
+    selected_company_id,
+    queued_files,
+    load_documents,
+    upload_via_signed_urls,
+    upload_via_multipart,
+  ])
 
   // ── Embed ──────────────────────────────────────────────────────────────────
 
