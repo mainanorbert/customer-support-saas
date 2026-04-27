@@ -78,6 +78,7 @@ dmypy.json
 .env
 .env.*
 *.env
+!.env.example
 
 # Local configuration files
 *.local
