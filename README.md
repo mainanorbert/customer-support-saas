@@ -25,7 +25,8 @@ Core capabilities include:
 
 - Frontend: Next.js 16, React 19, TypeScript, Tailwind CSS, Clerk
 - Backend: FastAPI, SQLAlchemy, Alembic, pgvector, OpenRouter / OpenAI-compatible APIs
-- Storage: PostgreSQL for application data, local filesystem or Supabase Storage for files
+- Storage: Aiven PostgreSQL (pgvector) for application data, local filesystem or Supabase Storage for files
+- Models (defaults): Text Embedding 3 Small for embeddings, GPT-4.1 Mini for chat (via OpenRouter/OpenAI-compatible APIs)
 - Tooling: `npm` for the frontend, `uv` for the Python backend, Docker Compose for backend container runs
 
 ## Project structure
@@ -43,7 +44,7 @@ Core capabilities include:
 1. A user signs in through Clerk in the frontend.
 2. The user creates a company workspace.
 3. The user uploads PDF files for that company.
-4. The backend stores the files and triggers background embedding.
+4. The backend stores the files and triggers background embedding (FastAPI background tasks).
 5. When the user opens chat, the assistant retrieves the most relevant chunks for the selected company and generates a grounded response.
 
 ## Prerequisites
@@ -201,6 +202,30 @@ npm run lint
 npm run typecheck
 ```
 
+## Logging and error handling
+
+Backend logging uses the standard Python `logging` module in service layers (for example, embedding, guardrails, and RAG flows). There is no centralized logging configuration wired up yet; `backend/src/core/logging.py` exists but is empty.
+
+Error handling relies on FastAPI defaults plus explicit `HTTPException` raises for validation/authentication errors in services and routers. Background workflows (such as embedding) catch exceptions, roll back database work, and emit error logs, but do not surface custom error responses beyond FastAPI defaults.
+
+## Observability (traces, metrics, alerts, LLM usage)
+
+- Tracing: not configured.
+- Metrics: not configured.
+- Alerts: not configured.
+- Health check: `GET /health` returns a simple liveness payload.
+- LLM-specific monitoring: OpenRouter/OpenAI usage is normalized into prompt/completion/total token counts and cost, then stored per user in the database for reporting. There is no external metrics/telemetry export configured.
+
+## Tests present
+
+Backend tests live under `backend/tests` and include:
+
+- Cost monitoring unit tests (`tests/cost_tests/test_cost_monitoring.py`) covering token/cost aggregation.
+- Storage backend tests (`tests/storage_tests/test_storage_backends.py`) covering local vs Supabase upload paths and extraction.
+- Document ingestion API tests (`tests/ingestion_tests/test_document_ingestion.py`) using FastAPI `TestClient`.
+
+There are no frontend unit/integration tests in this repo; frontend checks are lint and typecheck only.
+
 ## Main API areas
 
 The FastAPI app mounts routes under `/api/v1`:
@@ -213,6 +238,6 @@ The FastAPI app mounts routes under `/api/v1`:
 ## Development notes
 
 - Uploaded documents are validated as PDFs by the backend.
-- Document embedding runs in FastAPI background tasks.
+- Document embedding runs in FastAPI background tasks after uploads complete.
 - PostgreSQL tables are created on app startup, and `pgvector` is ensured automatically when the database is PostgreSQL.
 - Tenant isolation is central to the design: company data, document retrieval, and chat responses are scoped to the authenticated owner and selected company.
