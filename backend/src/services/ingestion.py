@@ -15,6 +15,10 @@ DOCUMENT_STATUS_PROCESSING = "processing"
 DOCUMENT_STATUS_COMPLETED = "completed"
 DOCUMENT_STATUS_FAILED = "failed"
 
+# Hard ceiling for any single PDF, applied both to multipart and signed-URL flows.
+# Tuned for a free-tier deployment talking to Supabase Storage from a browser.
+MAX_PDF_UPLOAD_BYTES = 25 * 1024 * 1024
+
 
 @dataclass(frozen=True)
 class StoredDocumentFile:
@@ -159,6 +163,35 @@ def assert_pdf_upload(upload_file: UploadFile) -> None:
         )
 
 
+def assert_pdf_metadata(*, file_name: str, content_type: str, file_size: int) -> None:
+    """Validate metadata sent by the client when minting signed upload URLs.
+
+    Mirrors :func:`assert_pdf_upload` for the signed-upload flow where bytes
+    never reach the backend. Also enforces :data:`MAX_PDF_UPLOAD_BYTES`.
+    """
+    suffix = Path(file_name).suffix.lower()
+    mime = (content_type or "").lower().strip()
+    if suffix != ".pdf" or mime not in {"application/pdf", "application/x-pdf"}:
+        raise HTTPException(
+            status_code=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE,
+            detail=f"Only PDF files are accepted. Received: name={file_name!r} type={mime!r}.",
+        )
+    if file_size <= 0:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="File size must be positive.")
+    if file_size > MAX_PDF_UPLOAD_BYTES:
+        max_mb = MAX_PDF_UPLOAD_BYTES // (1024 * 1024)
+        raise HTTPException(
+            status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+            detail=f"File '{file_name}' is too large. Maximum allowed size is {max_mb} MB.",
+        )
+
+
+def build_storage_relative_path(*, company_id: str, document_id: str, safe_name: str) -> str:
+    """Return the canonical ``storage/{company}/{doc}_{name}`` key for a new document."""
+    stored_name = f"{document_id}_{safe_name}"
+    return f"storage/{company_id}/{stored_name}"
+
+
 async def store_uploaded_document_file(
     *,
     settings: Settings,
@@ -174,8 +207,9 @@ async def store_uploaded_document_file(
     """
     original_name = upload_file.filename or ""
     safe_name = sanitize_file_name(original_name)
-    stored_name = f"{document_id}_{safe_name}"
-    relative_path = f"storage/{company_id}/{stored_name}"
+    relative_path = build_storage_relative_path(
+        company_id=company_id, document_id=document_id, safe_name=safe_name
+    )
     content_type = upload_file.content_type
     file_size = 0
     file_bytes = bytearray()
@@ -184,6 +218,13 @@ async def store_uploaded_document_file(
         if not chunk:
             break
         file_size += len(chunk)
+        if file_size > MAX_PDF_UPLOAD_BYTES:
+            await upload_file.close()
+            max_mb = MAX_PDF_UPLOAD_BYTES // (1024 * 1024)
+            raise HTTPException(
+                status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+                detail=f"File '{safe_name}' is too large. Maximum allowed size is {max_mb} MB.",
+            )
         file_bytes.extend(chunk)
 
     await upload_file.close()
@@ -201,7 +242,9 @@ async def store_uploaded_document_file(
     else:
         target_directory = Path(settings.upload_root).expanduser().resolve() / company_id
         target_directory.mkdir(parents=True, exist_ok=True)
-        destination_path = target_directory / stored_name
+        # The relative path is "storage/{company_id}/{document_id}_{safe_name}";
+        # strip the company prefix to land beneath ``target_directory``.
+        destination_path = target_directory / Path(relative_path).name
         destination_path.write_bytes(file_bytes)
 
     return StoredDocumentFile(

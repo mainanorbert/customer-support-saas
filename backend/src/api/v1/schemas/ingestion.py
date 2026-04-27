@@ -1,6 +1,7 @@
 """Request and response models for tenant setup and document ingestion."""
 
 from datetime import datetime
+from typing import Literal
 
 from pydantic import BaseModel, EmailStr, Field
 
@@ -58,3 +59,50 @@ class EmbedTriggerResponse(BaseModel):
 
     message: str = Field(..., examples=["Embedding started for 3 pending document(s)."])
     company_id: str = Field(..., examples=["a1b2c3d4-..."])
+
+
+class DocumentUploadRequestItem(BaseModel):
+    """Per-file metadata sent by the client when requesting upload tickets."""
+
+    file_name: str = Field(..., min_length=1, max_length=512)
+    file_size: int = Field(..., ge=1)
+    content_type: str = Field(default="application/pdf", min_length=1, max_length=128)
+
+
+class DocumentUploadsRequest(BaseModel):
+    """Body for the signed-upload mint endpoint."""
+
+    files: list[DocumentUploadRequestItem] = Field(..., min_length=1, max_length=20)
+
+
+class DocumentUploadTicket(BaseModel):
+    """One file's worth of pre-signed upload instructions."""
+
+    document_id: str
+    file_name: str
+    file_path: str
+    upload_url: str
+    method: Literal["PUT"] = "PUT"
+    content_type: str
+
+
+class DocumentUploadsResponse(BaseModel):
+    """Mint-endpoint response. ``mode == 'multipart'`` tells the client to fall back."""
+
+    mode: Literal["direct", "multipart"]
+    uploads: list[DocumentUploadTicket] = Field(default_factory=list)
+
+
+class DocumentConfirmItem(BaseModel):
+    """Per-file metadata sent after a direct upload completed in the browser."""
+
+    document_id: str
+    file_path: str
+    file_name: str
+    content_type: str = Field(default="application/pdf")
+
+
+class DocumentConfirmRequest(BaseModel):
+    """Body for the confirm endpoint that finalizes direct uploads in the database."""
+
+    documents: list[DocumentConfirmItem] = Field(..., min_length=1, max_length=20)
