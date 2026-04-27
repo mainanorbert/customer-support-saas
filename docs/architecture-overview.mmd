@@ -5,16 +5,16 @@ flowchart LR
 
   subgraph Backend
     API[FastAPI API]
-    Tasks[Background tasks\n(embeddings)]
+    Tasks[Background tasks<br/>(embeddings)]
   end
 
   subgraph Data
-    DB[(Aiven Postgres\npgvector)]
-    Storage[Supabase Storage\nor local disk]
+    DB[(Aiven Postgres<br/>pgvector)]
+    Storage[Supabase Storage<br/>or local disk]
   end
 
   subgraph AI
-    OpenRouter[OpenRouter API\nGPT-4.1 Mini]
+    OpenRouter[OpenRouter API<br/>GPT-4.1 Mini]
     Embeddings[Text Embedding 3 Small]
   end
 
