@@ -18,6 +18,14 @@ def verify_password(plain_password: str, hashed_password: str) -> bool:
     return hashlib.sha256(plain_password.encode()).hexdigest() == hashed_password
 
 def create_access_token(data: dict, expires_delta: Optional[timedelta] = None) -> str:
+    """Create a JWT access token.
+    Args:
+        data: The payload claims to include in the token.
+        expires_delta: Optional custom expiration delta. If not provided, the
+            token will expire after ``ACCESS_TOKEN_EXPIRE_MINUTES``.
+    Returns:
+        The encoded JWT access token as a string.
+    """
     """Create a JWT access token."""
     to_encode = data.copy()
     if expires_delta:
