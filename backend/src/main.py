@@ -10,9 +10,12 @@ from src.api.v1.routers import agents, companies, monitoring, users
 from src.core.config import Settings
 from src.core.database import Base
 from src.core.dependencies import get_database_engine, get_settings
+from src.core.logging import setup_logging
 from src.core.pgvector_setup import database_url_is_postgresql, ensure_pgvector_extension
 import src.models  # noqa: F401
 from src.services.supabase_storage import uses_supabase_storage
+
+setup_logging()
 
 
 @asynccontextmanager
