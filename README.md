@@ -7,6 +7,25 @@ The project is split into:
 - a `frontend` Next.js application for authentication, document management, and chat
 - a `backend` FastAPI API for ingestion, embeddings, retrieval, guardrails, and persistence
 
+## Table of contents
+
+- [What the project does](#what-the-project-does)
+- [Tech stack](#tech-stack)
+- [Project structure](#project-structure)
+- [How it works](#how-it-works)
+- [Prerequisites](#prerequisites)
+- [Environment variables](#environment-variables)
+	- [Backend](#backend)
+	- [Frontend](#frontend)
+- [Run locally](#run-locally)
+- [Run with Docker](#run-with-docker)
+- [Tests](#tests)
+- [Logging and error handling](#logging-and-error-handling)
+- [Observability (traces, metrics, alerts, LLM usage)](#observability-traces-metrics-alerts-llm-usage)
+- [Tests present](#tests-present)
+- [Main API areas](#main-api-areas)
+- [Development notes](#development-notes)
+
 ## What the project does
 
 This application is designed to help support teams answer customer questions faster without mixing data across tenants.
@@ -204,7 +223,7 @@ npm run typecheck
 
 ## Logging and error handling
 
-Backend logging uses the standard Python `logging` module in service layers (for example, embedding, guardrails, and RAG flows). There is no centralized logging configuration wired up yet; `backend/src/core/logging.py` exists but is empty.
+Backend logging uses the standard Python `logging` module in service layers (for example, embedding, guardrails, and RAG flows). A centralized logging setup is wired at app startup (`backend/src/core/logging.py`) with a rotating file handler and console output.
 
 Error handling relies on FastAPI defaults plus explicit `HTTPException` raises for validation/authentication errors in services and routers. Background workflows (such as embedding) catch exceptions, roll back database work, and emit error logs, but do not surface custom error responses beyond FastAPI defaults.
 
@@ -218,11 +237,16 @@ Error handling relies on FastAPI defaults plus explicit `HTTPException` raises f
 
 ## Tests present
 
-Backend tests live under `backend/tests` and include:
+Backend tests live under `backend/tests` and are grouped as:
 
-- Cost monitoring unit tests (`tests/cost_tests/test_cost_monitoring.py`) covering token/cost aggregation.
-- Storage backend tests (`tests/storage_tests/test_storage_backends.py`) covering local vs Supabase upload paths and extraction.
-- Document ingestion API tests (`tests/ingestion_tests/test_document_ingestion.py`) using FastAPI `TestClient`.
+Unit tests:
+
+- Cost monitoring (`tests/cost_tests/test_cost_monitoring.py`) covering token/cost aggregation.
+- Storage backends (`tests/storage_tests/test_storage_backends.py`) covering local vs Supabase upload paths and extraction.
+
+Integration tests:
+
+- Document ingestion API (`tests/ingestion_tests/test_document_ingestion.py`) using FastAPI `TestClient` and a temp SQLite DB.
 
 There are no frontend unit/integration tests in this repo; frontend checks are lint and typecheck only.
 
