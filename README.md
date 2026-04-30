@@ -50,13 +50,137 @@ Core capabilities include:
 
 ## Project structure
 
+High-level layout of the repository (generated from the source tree; omitting generated folders such as `node_modules`, `.next`, `.venv`, and `__pycache__`).
+
 ```text
 .
-|-- frontend/          # Next.js app
-|-- backend/           # FastAPI app, services, models, tests, migrations
-|-- docker-compose.yml # Backend container setup
-`-- README.md
+├── Makefile                      # Convenience targets for local workflows
+├── docker-compose.yml            # Backend container image and ports
+├── README.md
+├── .cursor/
+│   └── rules/                    # Cursor editor rules for this workspace
+├── frontend/                     # Next.js 16 app (App Router)
+│   ├── app/
+│   │   ├── api/                  # Route handlers: BFF to FastAPI + Clerk bearer
+│   │   │   ├── chat/
+│   │   │   │   └── route.ts
+│   │   │   ├── ingestion/
+│   │   │   │   ├── companies/
+│   │   │   │   │   ├── route.ts
+│   │   │   │   │   └── [companyId]/
+│   │   │   │   │       ├── documents/
+│   │   │   │   │       │   ├── route.ts
+│   │   │   │   │       │   ├── confirm/route.ts
+│   │   │   │   │       │   └── uploads/route.ts
+│   │   │   │   │       └── embed/route.ts
+│   │   │   │   └── register/route.ts
+│   │   │   ├── monitoring/
+│   │   │   │   └── guardrail-events/route.ts
+│   │   │   └── usage/route.ts
+│   │   ├── chat/page.tsx
+│   │   ├── dashboard/page.tsx
+│   │   ├── documents/page.tsx
+│   │   ├── globals.css
+│   │   ├── layout.tsx
+│   │   └── page.tsx
+│   ├── components/
+│   │   ├── ui/                   # Shared UI primitives (e.g. button)
+│   │   ├── theme-provider.tsx
+│   │   └── theme-toggle.tsx
+│   ├── hooks/                    # Reserved for shared React hooks
+│   ├── lib/
+│   │   ├── server/               # Server-only helpers (Clerk → backend token)
+│   │   │   └── resolve_clerk_bearer_for_backend.ts
+│   │   ├── backend_base_url.ts
+│   │   └── utils.ts
+│   ├── public/                   # Static assets
+│   ├── components.json           # shadcn/ui style config
+│   ├── eslint.config.mjs
+│   ├── middleware.ts             # Clerk middleware
+│   ├── next.config.mjs
+│   ├── package.json
+│   ├── postcss.config.mjs
+│   └── tsconfig.json
+└── backend/                      # FastAPI API, SQLAlchemy, Alembic
+    ├── alembic/                  # DB migrations
+    │   ├── versions/             # Revision scripts (add under Alembic as needed)
+    │   ├── env.py
+    │   └── script.py.mako
+    ├── alembic.ini
+    ├── architecture/             # Mermaid sources + prose architecture notes
+    ├── docs/                     # Product and system documentation
+    │   ├── build-journey/
+    │   │   └── README.md
+    │   ├── architecture-overview.mmd
+    │   ├── README.md
+    │   ├── strategic-pitch.md
+    │   └── system-architecture.md
+    ├── scripts/                  # Shell entrypoints for dev, test, migrate
+    │   ├── dev.sh
+    │   ├── migrate.sh
+    │   ├── make_migration.sh
+    │   └── test.sh
+    ├── src/
+    │   ├── api/v1/               # Versioned HTTP surface
+    │   │   ├── routers/
+    │   │   │   ├── agents.py     # RAG chat
+    │   │   │   ├── companies.py # Companies + documents + uploads
+    │   │   │   ├── conversations.py
+    │   │   │   ├── monitoring.py # Guardrail audit listing
+    │   │   │   ├── tenants.py
+    │   │   │   ├── users.py      # User sync + usage reporting
+    │   │   │   └── webhooks.py
+    │   │   └── schemas/          # Pydantic request/response models
+    │   │       ├── agent.py
+    │   │       ├── ingestion.py
+    │   │       ├── message.py
+    │   │       ├── monitoring.py
+    │   │       ├── response.py
+    │   │       ├── tenants.py
+    │   │       └── usage.py
+    │   ├── core/                 # App wiring: config, DB, auth, logging
+    │   │   ├── cache.py
+    │   │   ├── clerk_auth.py
+    │   │   ├── config.py
+    │   │   ├── database.py
+    │   │   ├── dependencies.py
+    │   │   ├── embedding_vector.py
+    │   │   ├── logging.py
+    │   │   ├── pgvector_setup.py
+    │   │   └── security.py
+    │   ├── domain/               # Placeholder for domain modules
+    │   ├── models/               # SQLAlchemy ORM models
+    │   │   └── __init__.py
+    │   ├── services/             # Ingestion, RAG, embeddings, storage, guardrails
+    │   │   ├── chunking.py
+    │   │   ├── cost_monitoring.py
+    │   │   ├── document_text.py
+    │   │   ├── embedding_pipeline.py
+    │   │   ├── embeddings.py
+    │   │   ├── guardrails.py
+    │   │   ├── ingestion.py
+    │   │   ├── openrouter_agent.py
+    │   │   ├── rag_agent.py
+    │   │   ├── rag_retrieval.py
+    │   │   └── supabase_storage.py
+    │   ├── tests/                # Placeholder / in-package tests if used
+    │   ├── workers/              # Placeholder for background workers
+    │   └── main.py               # FastAPI application factory
+    ├── tests/                    # Pytest suites
+    │   ├── cost_tests/
+    │   │   └── test_cost_monitoring.py
+    │   ├── embeddings_tests/
+    │   │   └── query_embeddings.py
+    │   ├── ingestion_tests/
+    │   │   └── test_document_ingestion.py
+    │   └── storage_tests/
+    │       └── test_storage_backends.py
+    ├── .env.example
+    ├── pyproject.toml
+    └── uv.lock
 ```
+
+**Frontend:** `app/` holds pages and `app/api/` proxies authenticated calls to the Python API. **Backend:** `src/main.py` mounts routers; business logic lives under `src/services/`; persistence under `src/models/`; migrations under `alembic/`. **Docs:** `backend/docs/` is Markdown product and system docs; `backend/architecture/` holds Mermaid (`.mmd`) diagrams and related narrative files.
 
 ## How it works
 
