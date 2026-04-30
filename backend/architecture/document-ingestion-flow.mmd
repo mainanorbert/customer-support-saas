@@ -1,0 +1,35 @@
+%% Document paths: multipart to API vs Supabase signed PUT then confirm.
+
+flowchart TB
+  subgraph client["Frontend · Clerk bearer on every call"]
+    A["Choose company + PDFs"]
+  end
+
+  subgraph path_multipart["Path A · multipart when no Supabase"]
+    M1["POST companies/id/documents · File bytes in request"]
+    M2["API validates PDF · unique name per company"]
+    M3["store_uploaded_document_file · disk"]
+    M4["create_document_record · commit"]
+    M5["BackgroundTasks · run_embedding_pipeline_for_company"]
+  end
+
+  subgraph path_direct["Path B · direct upload when Supabase configured"]
+    D1["POST documents/uploads · mint signed PUT URLs"]
+    D2["Browser PUT file to Supabase"]
+    D3["POST documents/confirm · HEAD verify + insert rows"]
+    D4["BackgroundTasks · same embedding pipeline"]
+  end
+
+  subgraph pipe["Embedding pipeline · shared"]
+    P1["Load file · extract text · chunk"]
+    P2["Embed via OpenRouter"]
+    P3["INSERT document_chunks · company_id on each row"]
+    P4["Mark document embedded"]
+  end
+
+  A --> M1
+  A --> D1
+  M1 --> M2 --> M3 --> M4 --> M5
+  D1 --> D2 --> D3 --> D4
+  M5 --> pipe
+  D4 --> pipe

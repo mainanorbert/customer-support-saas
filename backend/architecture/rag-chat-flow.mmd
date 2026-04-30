@@ -1,0 +1,35 @@
+%% RAG agent request path: guardrails, retrieval, answer agent.
+
+flowchart TB
+  subgraph entry["Request"]
+    CH["POST /agents/chat · company_id + message"]
+  end
+
+  subgraph authz["Authorization"]
+    CL["Verify Clerk session"]
+    OW["Resolve user + get_owned_company"]
+    GR["Input token guardrail"]
+  end
+
+  subgraph phase1["Phase 1 · deterministic retrieval"]
+    EQ["embed_query"]
+    RV["retrieve_chunks_from_db · WHERE company_id"]
+    TH["similarity threshold"]
+  end
+
+  subgraph phase2["Phase 2 · answer agent"]
+    AG["Agents SDK · instructions + injected context"]
+    FT["Optional search_knowledge_base tool"]
+    TR["trace wrapper"]
+  end
+
+  subgraph exit["Response"]
+    RP["AgentChatResponse · grounded flag"]
+    US["Usage charges recorded"]
+  end
+
+  CH --> CL --> OW --> GR
+  GR --> EQ --> RV --> TH
+  TH --> AG
+  AG --> FT
+  AG --> TR --> RP --> US

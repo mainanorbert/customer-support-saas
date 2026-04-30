@@ -1,0 +1,38 @@
+%% Component overview: who talks to whom at runtime.
+%% Render with any Mermaid-capable viewer; source of truth for edits.
+
+flowchart TB
+  subgraph clients["Clients"]
+    Browser["Browser · Next.js UI"]
+  end
+
+  subgraph identity["Identity"]
+    Clerk["Clerk · session JWT"]
+  end
+
+  subgraph app["Application tier"]
+    Next["Next.js · App Router + BFF routes"]
+    API["FastAPI · REST v1"]
+    BG["BackgroundTasks · embedding pipeline"]
+  end
+
+  subgraph persistence["Persistence"]
+    PG[("PostgreSQL · app tables + pgvector")]
+    Files["Object storage · Supabase or local upload root"]
+  end
+
+  subgraph external_ai["External AI"]
+    OR["OpenRouter · chat + embeddings API"]
+  end
+
+  Browser --> Clerk
+  Browser --> Next
+  Next -->|"Bearer to backend"| API
+  API --> Clerk
+  API --> PG
+  API --> Files
+  API --> OR
+  API --> BG
+  BG --> PG
+  BG --> Files
+  BG --> OR

@@ -1,0 +1,24 @@
+%% How tenant boundaries are enforced across layers.
+
+flowchart TB
+  subgraph boundary["Trust boundary"]
+    JWT["Clerk-issued session JWT"]
+  end
+
+  subgraph backend["Backend enforcement"]
+    DEP["require_clerk_session dependency"]
+    UID["Local User row · mirrors Clerk user_id"]
+    CMP["Company.owner_id must match User"]
+    QRY["SQL filters · company_id on chunks + ownership checks on routes"]
+  end
+
+  subgraph data["Data plane"]
+    CHK["document_chunks.company_id"]
+    DOC["documents.company_id"]
+  end
+
+  JWT --> DEP --> UID
+  UID --> CMP
+  CMP --> QRY
+  QRY --> CHK
+  QRY --> DOC

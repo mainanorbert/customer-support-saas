@@ -1,0 +1,21 @@
+%% Target state: email and WhatsApp on the same RAG core (not fully wired in repo yet).
+
+flowchart LR
+  subgraph channels["Future channels"]
+    WA["WhatsApp Business API"]
+    EM["Email provider · IMAP or inbound parse"]
+  end
+
+  subgraph ingress["Planned ingress"]
+    WH["Tenant-scoped webhooks"]
+    MAP["Channel config maps to company_id"]
+  end
+
+  subgraph core["Existing core · today"]
+    RAG["RAG pipeline · tenant retrieval + guardrails"]
+    OUT["Outbound send · same channel"]
+  end
+
+  WA -.->|"planned"| WH
+  EM -.->|"planned"| WH
+  WH --> MAP --> RAG --> OUT
