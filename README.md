@@ -10,6 +10,7 @@ The project is split into:
 ## Table of contents
 
 - [What the project does](#what-the-project-does)
+- [Screenshots](#screenshots)
 - [Tech stack](#tech-stack)
 - [Project structure](#project-structure)
 - [How it works](#how-it-works)
@@ -39,6 +40,26 @@ Core capabilities include:
 - RAG-powered support chat scoped to a single company
 - guardrails and monitoring endpoints for safety and observability
 - user cost tracking for AI usage
+
+## Screenshots
+
+### Home page
+
+Home interface with buttons for starting a chat and creating an agent.
+
+![Home page interface](./backend/docs/images/home_page.png)
+
+### Agent creation and knowledge base
+
+Create an agent knowledge base and upload documents for retrieval.
+
+![Agent creation and knowledge base upload](./backend/docs/images/agent_creation_kb.png)
+
+### Chat interface
+
+Chat with an assistant using a specific knowledge base.
+
+![Chat interface for knowledge-base answers](./backend/docs/images/chat_interface.png)
 
 ## Tech stack
 
