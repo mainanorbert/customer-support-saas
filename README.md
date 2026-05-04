@@ -1,5 +1,8 @@
 # Customer Support SaaS
 
+[![GitHub views](https://raw.githubusercontent.com/mainanorbert/customer-support-saas/traffic/total_views.svg)](https://github.com/mainanorbert/customer-support-saas)
+[![GitHub clones](https://raw.githubusercontent.com/mainanorbert/customer-support-saas/traffic/total_clones.svg)](https://github.com/mainanorbert/customer-support-saas)
+
 Customer Support SaaS is an AI-powered support platform for multi-tenant businesses. It lets authenticated users create companies, upload PDF documents as a private knowledge base, embed that content into vector search, and chat with an assistant that answers using tenant-specific context.
 
 The project is split into:

@@ -1,0 +1,47 @@
+name: traffic2badge
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "1 0 * * *"
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: write
+
+jobs:
+  run:
+    name: Make GitHub Traffic to Badge
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set traffic
+        id: traffic
+        uses: yi-Xu-0100/traffic-to-badge@v1.4.0
+        with:
+          my_token: ${{ secrets.TRAFFIC_TOKEN }}
+          traffic_branch: traffic
+          views_color: blue
+          clones_color: blue
+          views_week_color: blue
+          clones_week_color: blue
+          total_views_color: blue
+          total_clones_color: blue
+          total_views_week_color: blue
+          total_clones_week_color: blue
+          logo: github
+          year: 2026
+
+      - name: Deploy traffic badges
+        uses: peaceiris/actions-gh-pages@v3.9.3
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_branch: ${{ steps.traffic.outputs.traffic_branch }}
+          publish_dir: ${{ steps.traffic.outputs.traffic_path }}
+          user_name: "github-actions[bot]"
+          user_email: "41898282+github-actions[bot]@users.noreply.github.com"
+          full_commit_message: "Update repository traffic badges"
